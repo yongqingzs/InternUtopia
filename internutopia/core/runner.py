@@ -376,7 +376,14 @@ class SimulatorRunner:
             for task in self.current_tasks.values():
                 task.clear_rigid_bodies()
 
-            SimulationManager._on_stop('reset')
+            # Isaac Sim 5.x: stop the timeline properly so PhysX fully unloads
+            # deleted articulation prims before we re-add them. Using
+            # self._world.stop() (rather than the bare _on_stop shim) fires the
+            # STOP timeline event which lets PhysX drain its internal state.
+            if not self._world.is_stopped():
+                self._world.stop()
+            else:
+                SimulationManager._on_stop('reset')
         else:
             # init
             SimulationManager._on_stop('reset')
@@ -415,7 +422,15 @@ class SimulatorRunner:
             self.task_name_to_env_id_map[task.name] = task.env_id
             self.env_id_to_task_name_map[task.env_id] = task.name
 
-        # create sim_view
+        # Isaac Sim 5.x: After new USD prims are on stage, restart the PhysX
+        # pipeline so force_load_physics_from_usd sees the fresh articulation.
+        # initialize_physics() also dispatches PHYSICS_WARMUP → _create_simulation_view.
+        if reset_tasks and not self._world.is_stopped():
+            # If the timeline was replayed by self._world.stop() it may have
+            # already been re-started; ensure it is stopped before re-init.
+            self._world.stop()
+        SimulationManager.initialize_physics()
+        # Rebuild the tensor view explicitly (idempotent safety call).
         SimulationManager._create_simulation_view('reset')
 
         # restore the state of envs that haven't been reset

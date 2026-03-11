@@ -53,7 +53,12 @@ class IsaacsimArticulation(IArticulation):
         prim = get_prim_at_path(prim_path)
         if prim.IsValid():
             if usd_path is not None:
-                raise ValueError(f"Prim {prim_path} already exist, 'usd_path' should be None.")
+                # Isaac Sim 5.x: USD stage changes from DeletePrimsCommand may not have
+                # been flushed yet by the time we reach here. Safely remove the stale
+                # prim ourselves and recreate it from the new usd_path reference.
+                import omni.kit.commands
+                omni.kit.commands.execute('DeletePrims', paths=[prim_path])
+                add_reference_to_stage(prim_path=prim_path, usd_path=os.path.abspath(usd_path))
         else:
             if usd_path is None:
                 raise ValueError(f"Prim {prim_path} not exist, 'usd_path' is required.")
