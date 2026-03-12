@@ -446,6 +446,23 @@ class SimulatorRunner:
         for task in _new_tasks:
             task.post_reset()
 
+        # Isaac Sim 5.x: After world.stop() + initialize_physics() the physics
+        # simulation is in a stopped state.  world.step() in standalone mode can
+        # still tick the app, but the physics tensor API (set_world_pose,
+        # apply_action, etc.) does NOT apply operations until the simulation is
+        # PLAYING again.  Call world.play() here so that subsequent env.step()
+        # calls move the robot.  world.play() fires the PHYSICS_WARMUP event,
+        # which triggers an additional post_reset() on all registered scene
+        # objects via World._on_physics_ready(); the explicit post_reset() above
+        # is therefore a safe no-op redundancy but keeps the episode start poses
+        # locked in before the event handlers run.
+        if reset_tasks:
+            self._world.play()
+            # Re-apply post_reset so episode start positions / PD gains set
+            # here take precedence over any defaults applied by the play callbacks.
+            for task in _new_tasks:
+                task.post_reset()
+
         # log new episodes
         log.info('===================== episodes ========================')
         for task in _new_tasks:
